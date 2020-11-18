@@ -1,0 +1,160 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+
+* * *
+
+## Part 1: Data
+The General Social Survey (GSS) gathers data on contemporary American society in order to monitor and explain trends and constants in attitudes, behaviors, and attributes. It contains a standard core of demographic, behavioral, and attitudinal questions, plus topics of special interest. Among the topics covered are civil liberties, crime and violence, intergroup tolerance, morality, national spending priorities, psychological well-being, social mobility, and stress and traumatic events.
+
+The data used is a extract of General Social Survey Cumulative File that contains data from 1972 to 2012 modified for Coursera Data and Statistical Inference
+Course Spring 2014. Therefore, missing values from the responses were removed.
+
+### How data was collected and implications of this data collection method on the scope of inference
+
+The observations in the sample were collected in several ways, either through computer-assisted personal interview (CAPI), face-to-face interview or telephone interview.
+
+The 1972-74 surveys used modified probability designs and the remaining surveys were completed using a full-probability sample design, producing a high-quality, representative sample of the adult population of the U.S.
+
+**Note:** respondent is abbreviated 'R'. Respondent's is abbreviated 'RS'.
+
+* * *
+
+## Part 2: Research question
+Plenty of people may be involved in jobs they do not want because of the lack of opportunity, specifically, the lack of education. Besides, I would like to know if education is still being considered as one of the means for people to live a better life. So, I decided to ask how education may affect a person's financial situation?
+
+This may be of interest to my audience because this could encourage reflection about the impact of education. Thus, people may recognize how being well educated may change the life trajectory of many and how providing people with opportunities is key for their success, not necessarily because of luck or family background.
+
+* * *
+
+## Part 3: Exploratory data analysis
+First, I decided to check the relationship between Highest education degree (degree) and Total family income in constant dollars (coninc).
+
+```{r}
+inc_degree <- gss %>% select(c(degree,coninc)) %>% filter(!is.na(degree))
+```
+We can see a positive relationship between both variables. Median family income tends to be higher when R has more advanced degrees.
+
+```{r}
+inc_degree %>%
+    ggplot(aes(x=degree,y=coninc,color=degree)) + geom_boxplot() +
+    ggtitle(label="Highest education degree and Total family income (constant dollars)")
+```
+
+Mean income also tends to increase with degree, however, variability also augments.
+
+```{r}
+inc_degree %>% group_by(degree) %>%
+    summarise(n=n(),
+              mean_income=mean(coninc,na.rm = TRUE),
+              median_income=median(coninc,na.rm = TRUE),
+              se=sd(coninc,na.rm = TRUE),
+              min=min(coninc,na.rm = TRUE),
+              max=max(coninc,na.rm = TRUE),
+              iqr=IQR(coninc,na.rm = TRUE)) %>%
+    arrange(desc(mean_income))
+```
+
+Now let's check how RS identify their class by degree.
+
+```{r}
+degree_class <- gss %>% select(degree,class) %>% filter(!is.na(degree),!is.na(class))
+```
+
+Although class is subjective, the more education, the less people identify themselves in either lower or working class.
+
+```{r}
+degree_class %>% ggplot(aes(x=degree,group=class,fill=class)) + geom_bar()
+```
+
+And overall, there are more in "Middle Class" or "Upper Class" as education increases.
+
+```{r}
+degree_class %>% group_by(degree, class) %>% summarise(n=n()) %>%
+    filter(class %in% c("Middle Class", "Upper Class")) %>% arrange(desc(n))
+```
+
+It's time to analize the difficulty to find a job by Highest year of school completed.
+
+```{r}
+jobfind_educ <- gss %>% select(jobfind,educ) %>%
+    filter(!is.na(jobfind) & !is.na(educ)) %>% filter(educ %in% seq(0,20,5))
+
+jobfind_educ %>% ggplot(aes(x=educ,group=jobfind,fill=jobfind)) +
+    geom_bar(position = "dodge") + scale_y_log10()
+```
+
+Ease of getting a job has an uptrend as schooling years increase, "not easy" answers also augmented but it reaches a maximum at approximately 12 years of education but then decreases. Which tells us that is relatively easier to find a job as people is more educated.
+
+
+* * *
+
+## Part 4: Inference
+Is Mean family income different by degree?
+For this, I considered necessary performing ANOVA in order to compare 3 or more means. Also, the grouping or categorical variable degree has more than 2 levels.
+
+### Check conditions
+### 1. Independence
+Sample size is less than 10% of the adult household population of the U.S. The groups (categorical variable degree) are independent between them because it's a random and representative sample of the adult population of the U.S.
+
+### 2. Normal distribution of the observations
+By using **qqnorm** and **qqline**, we should see the points forming a line that's roughly straight.
+
+```{r}
+par(mfrow=c(2,3))
+
+qqnorm(inc_degree[inc_degree$degree == "Lt High School","coninc"], main="Lt High School")
+qqline(inc_degree[inc_degree$degree == "Lt High School","coninc"])
+
+qqnorm(inc_degree[inc_degree$degree == "High School","coninc"], main="High School")
+qqline(inc_degree[inc_degree$degree == "High School","coninc"])
+
+qqnorm(inc_degree[inc_degree$degree == "Junior College","coninc"], main="Junior College")
+qqline(inc_degree[inc_degree$degree == "Junior College","coninc"])
+
+qqnorm(inc_degree[inc_degree$degree == "Bachelor","coninc"], main="Bachelor")
+qqline(inc_degree[inc_degree$degree == "Bachelor","coninc"])
+
+qqnorm(inc_degree[inc_degree$degree == "Graduate","coninc"], main="Graduate")
+qqline(inc_degree[inc_degree$degree == "Graduate","coninc"])
+```
+
+### Hypothesis test for a test of normality
+
+**Null hypothesis (H0)**: The data is normally distributed. If p> 0.05, normality can be assumed.
+**Alternative hypothesis (Ha)**: The data is not normally distributed.
+
+There are more than 50 events per group, therefore, Kolmogorov-Smirnov test will be used.
+
+```{r}
+require(nortest)
+by(data = inc_degree,INDICES = inc_degree$degree,FUN = function(x){ lillie.test(x$coninc)})
+```
+
+The hypothesis test showed lack of normality because of the really low p-values. In addition to that, the points in several **qqplots** were moving away at the of the **qqline**. As a result, ANOVA cannot be used for this purpose, which was the most suitable method to check if means were different. So it's not necessary to check step 3 (Equal variance between groups).
+
+### Conclusions
+Even though ANOVA test could not be used, from the
+EDA we could evidence strong relations between education and someone's financial situation. Unfortunately, it may not be possible to extend that affirmation to the whole population because inference wasn't used.
